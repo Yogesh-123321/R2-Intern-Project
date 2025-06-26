@@ -11,7 +11,7 @@ app.use(bodyParser.json());
 const cors = require('cors');
 app.use(cors());
 
-mongoose.connect('mongodb://localhost:27017/iot_dashboard')
+mongoose.connect('mongodb+srv://yogeshmadan1428:Gjr9Qk1FZnVt6Ytl@srmsems.28gfh0m.mongodb.net/')
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err.message));
 
