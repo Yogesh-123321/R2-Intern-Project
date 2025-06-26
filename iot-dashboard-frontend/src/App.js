@@ -27,8 +27,8 @@ function App() {
 
   const fetchData = async () => {
     try {
-      const readingsRes = await fetch('http://localhost:5000/api/readings');
-      const devicesRes = await fetch('http://localhost:5000/api/devices');
+      const readingsRes = await fetch('http://13.201.227.67:5000/api/readings');
+      const devicesRes = await fetch('http://13.201.227.67:5000/api/devices');
       setReadings(await readingsRes.json());
       setDevices(await devicesRes.json());
     } catch (err) {
@@ -42,7 +42,7 @@ function App() {
       return;
     }
     try {
-      const res = await fetch('http://localhost:5000/command', {
+      const res = await fetch('http://13.201.227.67:5000/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mac: selectedMac, command: cmdToSend }),

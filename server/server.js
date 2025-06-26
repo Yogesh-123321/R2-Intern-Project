@@ -211,10 +211,10 @@ setInterval(() => {
   }
 }, 5000);
 
-server.listen(4000, () => {
+server.listen(4000, '0.0.0.0' ,() => {
   console.log('TCP server listening on port 4000');
 });
 
-app.listen(5000, () => {
+app.listen(5000, '0.0.0.0' ,() => {
   console.log('HTTP server running on port 5000');
 });
