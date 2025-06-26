@@ -11,12 +11,19 @@ app.use(bodyParser.json());
 const cors = require('cors');
 app.use(cors());
 
-// Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/iot_dashboard')
-  .then(() => console.log(' MongoDB connected'))
-  .catch(err => console.error(' MongoDB connection error:', err.message));
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err.message));
 
-// HTTP API: Send command to a connected device
+// 🔧 Helper to generate static location per MAC
+function getStaticLocation(mac) {
+  const index = parseInt(mac.slice(-2), 16);
+  return {
+    latitude: 28.60 + (index % 10) * 0.01,
+    longitude: 77.20 + (index % 10) * 0.01
+  };
+}
+
 app.post('/command', (req, res) => {
   const { mac, command } = req.body;
   const deviceSocket = connectedDevices.get(mac);
@@ -29,31 +36,28 @@ app.post('/command', (req, res) => {
   const buffer = Buffer.from(command, 'utf-8');
   deviceSocket.write(buffer, (err) => {
     if (err) {
-      console.error(` Failed to send command to ${mac}:`, err.message);
+      console.error(`Failed to send command to ${mac}:`, err.message);
       return res.status(500).json({ message: `Error sending command to ${mac}` });
     }
-    console.log(` Sent command "${command}" to ${mac}`);
+    console.log(`Sent command "${command}" to ${mac}`);
     res.json({ message: `Command sent to ${mac}` });
   });
 });
 
-//  HTTP API: Get live connected devices
 app.get('/api/devices', (req, res) => {
   res.json(Array.from(connectedDevices.keys()));
 });
 
-//  HTTP API: Get all historical MACs (from MongoDB)
 app.get('/api/all-devices', async (req, res) => {
   try {
     const devices = await SensorReading.distinct("mac");
     res.json(devices);
   } catch (error) {
-    console.error(" Error fetching all devices:", error);
+    console.error("Error fetching all devices:", error);
     res.status(500).json({ error: "Failed to fetch devices" });
   }
 });
 
-//  HTTP API: Get latest 100 sensor readings
 app.get('/api/readings', async (req, res) => {
   try {
     const readings = await SensorReading.find().sort({ timestamp: -1 }).limit(100);
@@ -64,33 +68,122 @@ app.get('/api/readings', async (req, res) => {
   }
 });
 
-//  TCP Server: Receive binary packets from STM32
+app.get('/api/device/:mac', async (req, res) => {
+  try {
+    const latest = await SensorReading.findOne({ mac: req.params.mac }).sort({ timestamp: -1 });
+    if (!latest) return res.status(404).json({ message: 'No data found' });
+    res.json(latest);
+  } catch (err) {
+    console.error('Error fetching device data:', err.message);
+    res.status(500).json({ error: 'Failed to fetch data' });
+  }
+});
+
+const BULK_SAVE_LIMIT = 1000;
+let readingBuffer = [];
+
 const server = net.createServer(socket => {
-  console.log(' New device connected from:', socket.remoteAddress);
   let buffer = Buffer.alloc(0);
 
   socket.on('data', async (data) => {
     buffer = Buffer.concat([buffer, data]);
 
-    while (buffer.length >= 29) {
-      const macRaw = buffer.subarray(0, 17);
-      const mac = macRaw.toString('utf-8').trim();
-      const temperature = buffer.readFloatLE(17);
-      const humidity = buffer.readFloatLE(21);
-      const voltage = buffer.readFloatLE(25);
+    try {
+      while (buffer.length >= 55) {
+        const macRaw = buffer.subarray(0, 17);
+        const macRawStr = macRaw.toString('utf-8').slice(0, 17).trim();
+        const mac = /^[0-9A-Fa-f:]+$/.test(macRawStr) ? macRawStr : `INVALID_${Date.now()}`;
+        if (mac.startsWith("INVALID")) {
+          console.warn(`⚠️ Dropping malformed MAC: ${mac}`);
+          buffer = buffer.slice(55);
+          continue;
+        }
 
-      const json = {
-        mac,
-        temperature: +temperature.toFixed(2),
-        humidity: +humidity.toFixed(2),
-        voltage: +voltage.toFixed(2),
-        timestamp: new Date().toISOString()
-      };
+        const humidity = +buffer.readFloatLE(17).toFixed(2);
+        const insideTemperature = +buffer.readFloatLE(21).toFixed(2);
+        const outsideTemperature = +buffer.readFloatLE(25).toFixed(2);
+        const lockStatus = buffer[29] === 1 ? 'OPEN' : 'CLOSED';
+        const doorStatus = buffer[30] === 1 ? 'OPEN' : 'CLOSED';
+        const waterLogging = !!buffer[31];
+        const waterLeakage = !!buffer[32];
+        const outputVoltage = +buffer.readFloatLE(33).toFixed(2);
+        const inputVoltage = +buffer.readFloatLE(37).toFixed(2);
+        const batteryBackup = +buffer.readFloatLE(41).toFixed(2);
+        const alarmActive = !!buffer[45];
+        const fireAlarm = !!buffer[46];
+        const fanLevel1Running = !!buffer[47];
+        const fanLevel2Running = !!buffer[48];
+        const fanLevel3Running = !!buffer[49];
+        const fanFailBits = buffer.readUInt32LE(50);
 
-      connectedDevices.set(mac, socket); // track active socket
-      await processData(json);
+        // ✅ Get location
+        const { latitude, longitude } = getStaticLocation(mac);
 
-      buffer = buffer.slice(29); // remove processed packet
+        const floats = [
+          humidity, insideTemperature, outsideTemperature,
+          outputVoltage, inputVoltage, batteryBackup
+        ];
+
+        if (floats.some(val => isNaN(val) || Math.abs(val) > 100000)) {
+          console.warn(`⚠️ Skipping packet from ${mac}: bad float value(s)`);
+          buffer = buffer.slice(55);
+          continue;
+        }
+
+        if (Math.random() < 0.01) {
+          console.log(`📡 ${mac} | Temp: ${insideTemperature}°C | Humidity: ${humidity}% | Voltage: ${inputVoltage}V`);
+        }
+
+        // ✅ Individual fan statuses based on fail bits
+        const fan1Status = fanLevel1Running && !(fanFailBits & (1 << 0));
+        const fan2Status = fanLevel1Running && !(fanFailBits & (1 << 1));
+        const fan3Status = fanLevel2Running && !(fanFailBits & (1 << 2));
+        const fan4Status = fanLevel2Running && !(fanFailBits & (1 << 3));
+        const fan5Status = fanLevel3Running && !(fanFailBits & (1 << 4));
+        const fan6Status = fanLevel3Running && !(fanFailBits & (1 << 5));
+
+        const reading = new SensorReading({
+          mac,
+          humidity,
+          insideTemperature,
+          outsideTemperature,
+          lockStatus,
+          doorStatus,
+          waterLogging,
+          waterLeakage,
+          outputVoltage,
+          inputVoltage,
+          batteryBackup,
+          alarmActive,
+          fireAlarm,
+          fanLevel1Running,
+          fanLevel2Running,
+          fanLevel3Running,
+          fanFailBits,
+          fan1Status,
+          fan2Status,
+          fan3Status,
+          fan4Status,
+          fan5Status,
+          fan6Status,
+          latitude,
+          longitude
+        });
+
+        connectedDevices.set(mac, socket);
+        readingBuffer.push(reading);
+
+        if (readingBuffer.length >= BULK_SAVE_LIMIT) {
+          const toSave = [...readingBuffer];
+          readingBuffer = [];
+          SensorReading.insertMany(toSave).catch(err => console.error('Bulk save error:', err.message));
+        }
+
+        buffer = buffer.slice(55);
+      }
+    } catch (err) {
+      console.error('Packet parsing failed:', err.message);
+      socket.destroy();
     }
   });
 
@@ -98,44 +191,30 @@ const server = net.createServer(socket => {
     for (const [mac, sock] of connectedDevices.entries()) {
       if (sock === socket) {
         connectedDevices.delete(mac);
-        console.log(` Device ${mac} disconnected`);
+        console.log(`Device ${mac} disconnected`);
       }
     }
   });
 
   socket.on('error', err => {
-    console.error(' Socket error:', err.message);
+    if (err.code !== 'ECONNRESET') {
+      console.error('Socket error:', err.message);
+    }
   });
 });
 
-// Start TCP and HTTP servers
+setInterval(() => {
+  if (readingBuffer.length > 0) {
+    const toSave = [...readingBuffer];
+    readingBuffer = [];
+    SensorReading.insertMany(toSave).catch(err => console.error('Periodic bulk save error:', err.message));
+  }
+}, 5000);
+
 server.listen(4000, () => {
-  console.log(' TCP Server running on port 4000');
+  console.log('TCP server listening on port 4000');
 });
 
 app.listen(5000, () => {
-  console.log(' HTTP Command API running on port 5000');
+  console.log('HTTP server running on port 5000');
 });
-
-// Sensor data processing & alerting
-async function processData(json) {
-  console.log(' Received:', json);
-
-  const alerts = [];
-  if (json.temperature < thresholds.temperature.min || json.temperature > thresholds.temperature.max)
-    alerts.push(`Temperature out of range: ${json.temperature}°C`);
-  if (json.humidity < thresholds.humidity.min || json.humidity > thresholds.humidity.max)
-    alerts.push(`Humidity out of range: ${json.humidity}%`);
-  if (json.voltage < thresholds.voltage.min || json.voltage > thresholds.voltage.max)
-    alerts.push(`Voltage out of range: ${json.voltage}V`);
-
-  if (alerts.length > 0) {
-    console.log(' ALERTS:', alerts.join(' | '));
-  } else {
-    console.log(' All values normal');
-  }
-
-  const reading = new SensorReading(json);
-  await reading.save();
-  console.log(' Saved to MongoDB');
-}
