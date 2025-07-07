@@ -16,15 +16,6 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err.message));
 
-// 🔧 Helper to generate static location per MAC
-function getStaticLocation(mac) {
-  const index = parseInt(mac.slice(-2), 16);
-  return {
-    latitude: 28.60 + (index % 10) * 0.01,
-    longitude: 77.20 + (index % 10) * 0.01
-  };
-}
-
 app.post('/command', (req, res) => {
   const { mac, command } = req.body;
   const deviceSocket = connectedDevices.get(mac);
@@ -80,6 +71,10 @@ app.get('/api/device/:mac', async (req, res) => {
   }
 });
 
+app.get('/api/thresholds', (req, res) => {
+  res.json(thresholds);
+});
+
 const BULK_SAVE_LIMIT = 1000;
 let readingBuffer = [];
 
@@ -90,13 +85,13 @@ const server = net.createServer(socket => {
     buffer = Buffer.concat([buffer, data]);
 
     try {
-      while (buffer.length >= 55) {
+      while (buffer.length >= 63) {
         const macRaw = buffer.subarray(0, 17);
         const macRawStr = macRaw.toString('utf-8').slice(0, 17).trim();
         const mac = /^[0-9A-Fa-f:]+$/.test(macRawStr) ? macRawStr : `INVALID_${Date.now()}`;
         if (mac.startsWith("INVALID")) {
           console.warn(`⚠️ Dropping malformed MAC: ${mac}`);
-          buffer = buffer.slice(55);
+          buffer = buffer.slice(63);
           continue;
         }
 
@@ -116,18 +111,18 @@ const server = net.createServer(socket => {
         const fanLevel2Running = !!buffer[48];
         const fanLevel3Running = !!buffer[49];
         const fanFailBits = buffer.readUInt32LE(50);
-
-        // ✅ Get location
-        const { latitude, longitude } = getStaticLocation(mac);
+        const latitude = +buffer.readFloatLE(55).toFixed(6);  // ✅ New
+        const longitude = +buffer.readFloatLE(59).toFixed(6); // ✅ New
 
         const floats = [
           humidity, insideTemperature, outsideTemperature,
-          outputVoltage, inputVoltage, batteryBackup
+          outputVoltage, inputVoltage, batteryBackup,
+          latitude, longitude
         ];
 
         if (floats.some(val => isNaN(val) || Math.abs(val) > 100000)) {
           console.warn(`⚠️ Skipping packet from ${mac}: bad float value(s)`);
-          buffer = buffer.slice(55);
+          buffer = buffer.slice(63);
           continue;
         }
 
@@ -135,13 +130,32 @@ const server = net.createServer(socket => {
           console.log(`📡 ${mac} | Temp: ${insideTemperature}°C | Humidity: ${humidity}% | Voltage: ${inputVoltage}V`);
         }
 
-        // ✅ Individual fan statuses based on fail bits
         const fan1Status = fanLevel1Running && !(fanFailBits & (1 << 0));
         const fan2Status = fanLevel1Running && !(fanFailBits & (1 << 1));
-        const fan3Status = fanLevel2Running && !(fanFailBits & (1 << 2));
+        const fan3Status = fanLevel1Running && !(fanFailBits & (1 << 2));
         const fan4Status = fanLevel2Running && !(fanFailBits & (1 << 3));
-        const fan5Status = fanLevel3Running && !(fanFailBits & (1 << 4));
+        const fan5Status = fanLevel2Running && !(fanFailBits & (1 << 4));
         const fan6Status = fanLevel3Running && !(fanFailBits & (1 << 5));
+
+        const thresholdAlarms = {
+          insideTemperatureAlarm:
+            insideTemperature > thresholds.insideTemperature.max ||
+            insideTemperature < thresholds.insideTemperature.min,
+          outsideTemperatureAlarm:
+            outsideTemperature > thresholds.outsideTemperature.max ||
+            outsideTemperature < thresholds.outsideTemperature.min,
+          humidityAlarm:
+            humidity > thresholds.humidity.max ||
+            humidity < thresholds.humidity.min,
+          inputVoltageAlarm:
+            inputVoltage > thresholds.inputVoltage.max ||
+            inputVoltage < thresholds.inputVoltage.min,
+          outputVoltageAlarm:
+            outputVoltage > thresholds.outputVoltage.max ||
+            outputVoltage < thresholds.outputVoltage.min,
+          batteryBackupAlarm:
+            batteryBackup < thresholds.batteryBackup.min
+        };
 
         const reading = new SensorReading({
           mac,
@@ -168,7 +182,8 @@ const server = net.createServer(socket => {
           fan5Status,
           fan6Status,
           latitude,
-          longitude
+          longitude,
+          ...thresholdAlarms
         });
 
         connectedDevices.set(mac, socket);
@@ -180,7 +195,7 @@ const server = net.createServer(socket => {
           SensorReading.insertMany(toSave).catch(err => console.error('Bulk save error:', err.message));
         }
 
-        buffer = buffer.slice(55);
+        buffer = buffer.slice(63);
       }
     } catch (err) {
       console.error('Packet parsing failed:', err.message);
@@ -212,10 +227,10 @@ setInterval(() => {
   }
 }, 5000);
 
-server.listen(4000, '0.0.0.0' ,() => {
+server.listen(4000, '0.0.0.0', () => {
   console.log('TCP server listening on port 4000');
 });
 
-app.listen(5000, '0.0.0.0' ,() => {
+app.listen(5000, '0.0.0.0', () => {
   console.log('HTTP server running on port 5000');
 });

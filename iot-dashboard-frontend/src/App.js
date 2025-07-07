@@ -18,6 +18,7 @@ function App() {
   const [status, setStatus] = useState('');
   const [activeTab, setActiveTab] = useState('gauges');
   const [activeFanBtns, setActiveFanBtns] = useState([]);
+  const [chartKey, setChartKey] = useState(0);
 
   useEffect(() => {
     fetchData();
@@ -28,9 +29,10 @@ function App() {
   const fetchData = async () => {
     try {
       const readingsRes = await fetch('http://13.201.227.67:5000/api/readings');
-      const devicesRes = await fetch('http://13.201.227.67:5000/api/devices');
+      const devicesRes = await fetch('http://13.201.227.67:5000/api/all-devices');
       setReadings(await readingsRes.json());
       setDevices(await devicesRes.json());
+      setChartKey(prev => prev + 1);
     } catch (err) {
       console.error('Error fetching data:', err);
     }
@@ -62,21 +64,14 @@ function App() {
 
   const handleFanClick = (level) => {
     const isActive = activeFanBtns.includes(level);
-    if (isActive) {
-      setActiveFanBtns(activeFanBtns.filter(l => l !== level));
-    } else {
-      setActiveFanBtns([...activeFanBtns, level]);
-    }
+    setActiveFanBtns(isActive ? activeFanBtns.filter(l => l !== level) : [...activeFanBtns, level]);
     sendCommand(`fan level ${level}`);
   };
 
   const handleOpenLock = () => {
     const pwd = window.prompt("Enter password to open lock:");
-    if (pwd === 'admin123') {
-      sendCommand('open lock');
-    } else {
-      setStatus('Wrong password for opening lock!');
-    }
+    if (pwd === 'admin123') sendCommand('open lock');
+    else setStatus('Wrong password for opening lock!');
   };
 
   const handleResetLock = () => {
@@ -95,7 +90,7 @@ function App() {
 
   const historicalData = readings
     .filter(r => r.mac === selectedMac)
-    .slice(-20) // last 20 readings
+    .slice(-100)
     .map((r, index) => ({
       index,
       insideTemperature: r.insideTemperature,
@@ -103,12 +98,25 @@ function App() {
       humidity: r.humidity,
       inputVoltage: r.inputVoltage,
       outputVoltage: r.outputVoltage,
-      batteryBackup: r.batteryBackup
+      batteryBackup: r.batteryBackup,
+      insideTemperatureAlarm: r.insideTemperatureAlarm,
+      outsideTemperatureAlarm: r.outsideTemperatureAlarm,
+      humidityAlarm: r.humidityAlarm,
+      inputVoltageAlarm: r.inputVoltageAlarm,
+      outputVoltageAlarm: r.outputVoltageAlarm,
+      batteryBackupAlarm: r.batteryBackupAlarm
     }));
 
-  return (
+  const latestReadingsByMac = {};
+  for (const reading of readings) {
+    if (!latestReadingsByMac[reading.mac]) {
+      latestReadingsByMac[reading.mac] = reading;
+    }
+  }
+
+      return (
     <div className="dashboard">
-      {/* Top-left: Selected Device */}
+      {/* ✅ TOP-LEFT: Selected Device Panel */}
       <div className="panel">
         <h2 className="selected-heading">
           📟 Selected Device{selectedMac ? <span>: {selectedMac}</span> : ''}
@@ -124,12 +132,12 @@ function App() {
 
             {activeTab === 'gauges' && (
               <div className="gauges grid-3x3">
-                <Gauge label="Inside Temp" value={latestReading.insideTemperature} max={100} color="#e63946" alarm={latestReading.insideTemperature > 50 || latestReading.fireAlarm} />
-                <Gauge label="Outside Temp" value={latestReading.outsideTemperature} max={100} color="#fca311" />
-                <Gauge label="Humidity" value={latestReading.humidity} max={100} color="#1d3557" alarm={latestReading.waterLogging} />
-                <Gauge label="Input Voltage" value={latestReading.inputVoltage} max={5} color="#06d6a0" />
-                <Gauge label="Output Voltage" value={latestReading.outputVoltage} max={5} color="#118ab2" alarm={latestReading.outputVoltage < 3.0} />
-                <Gauge label="Battery (min)" value={latestReading.batteryBackup} max={120} color="#ffc107" />
+                <Gauge label="Inside Temp" value={latestReading.insideTemperature} max={100} color="#e63946" alarm={latestReading.insideTemperatureAlarm} />
+                <Gauge label="Outside Temp" value={latestReading.outsideTemperature} max={100} color="#fca311" alarm={latestReading.outsideTemperatureAlarm} />
+                <Gauge label="Humidity" value={latestReading.humidity} max={100} color="#1d3557" alarm={latestReading.humidityAlarm} />
+                <Gauge label="Input Voltage" value={latestReading.inputVoltage} max={5} color="#06d6a0" alarm={latestReading.inputVoltageAlarm} />
+                <Gauge label="Output Voltage" value={latestReading.outputVoltage} max={5} color="#118ab2" alarm={latestReading.outputVoltageAlarm} />
+                <Gauge label="Battery (min)" value={latestReading.batteryBackup} max={120} color="#ffc107" alarm={latestReading.batteryBackupAlarm} />
               </div>
             )}
 
@@ -182,7 +190,6 @@ function App() {
                     <div className="fan-label">Reset</div>
                   </div>
                 </div>
-
                 {status && <p>{status}</p>}
               </div>
             )}
@@ -195,26 +202,80 @@ function App() {
           </>
         )}
       </div>
-
-      {/* Top-right: Historical Data Graph */}
+      {/* Top-right: Historical Graph */}
       <div className="panel">
         <h2>📈 Historical Data</h2>
         {selectedMac && historicalData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={historicalData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="index" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="insideTemperature" stroke="#ff4d4f" />
-              <Line type="monotone" dataKey="outsideTemperature" stroke="#ffa500" />
-              <Line type="monotone" dataKey="humidity" stroke="#1d3557" />
-              <Line type="monotone" dataKey="inputVoltage" stroke="#00b894" />
-              <Line type="monotone" dataKey="outputVoltage" stroke="#0984e3" />
-              <Line type="monotone" dataKey="batteryBackup" stroke="#ffc107" />
-            </LineChart>
-          </ResponsiveContainer>
+              <ResponsiveContainer width="100%" height={250} key={chartKey}>
+                <LineChart data={historicalData} margin={{ top: 20, right: 20, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="index" />
+                  <YAxis />
+                  <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="insideTemperature"
+                  stroke="#ff4d4f"
+                  name="Inside Temp"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="inputVoltage"
+                  stroke="#00b894"
+                  name="In Volt"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="humidity"
+                  stroke="#1d3557"
+                  name="Humidity"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="batteryBackup"
+                  stroke="#ffc107"
+                  name="Battery"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="outputVoltage"
+                  stroke="#0984e3"
+                  name="Out Volt"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="outsideTemperature"
+                  stroke="#ffa500"
+                  name="Outside Temp"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+                </LineChart>
+              </ResponsiveContainer>
+
         ) : (
           <p>Select a device to see its historical chart</p>
         )}
@@ -226,12 +287,19 @@ function App() {
         <div className="grid">
           {devices.map(mac => {
             const reading = readings.find(r => r.mac === mac);
-            const isConnected = !!reading;
-            const isAlarm = reading && isAlarmActive(reading);
+            let colorClass = 'disconnected';
+
+            if (reading) {
+              const hasStatusAlarm = isAlarmActive(reading);
+              const hasGaugeAlarm = reading.insideTemperatureAlarm || reading.outsideTemperatureAlarm || reading.humidityAlarm ||
+                reading.inputVoltageAlarm || reading.outputVoltageAlarm || reading.batteryBackupAlarm;
+              colorClass = hasStatusAlarm ? 'status-alarm' : hasGaugeAlarm ? 'gauge-alarm' : 'connected';
+            }
+
             return (
               <div
                 key={mac}
-                className={`device-tile ${isConnected ? 'connected' : 'disconnected'} ${selectedMac === mac ? 'selected' : ''} ${isAlarm ? 'warning' : ''}`}
+                className={`device-tile ${colorClass} ${selectedMac === mac ? 'selected' : ''}`}
                 onClick={() => setSelectedMac(mac)}
               >
                 {mac}
@@ -246,23 +314,45 @@ function App() {
         <h2>🗺️ Device Map</h2>
         <MapContainer center={defaultLocation} zoom={11} scrollWheelZoom={true} style={{ flexGrow: 1, height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
-          {devices.map((mac, i) => {
-            const lat = 28.6 + i * 0.01;
-            const lon = 77.2 + i * 0.01;
-            const isConnected = readings.some(r => r.mac === mac);
-            const icon = L.divIcon({
-              className: 'custom-marker',
-              html: `<div class="marker-dot ${isConnected ? 'connected' : 'disconnected'}"></div>`,
-              iconSize: [20, 20],
-              iconAnchor: [10, 10],
-            });
+              {devices.map(mac => {
+                const reading = latestReadingsByMac[mac];
+                if (!reading || !reading.latitude || !reading.longitude) return null;
 
-            return (
-              <Marker key={mac} position={[lat, lon]} icon={icon} eventHandlers={{ click: () => setSelectedMac(mac) }}>
-                <Popup>{mac}</Popup>
-              </Marker>
-            );
-          })}
+                const isConnected = readings.some(r => r.mac === mac);
+                const isAlarm = isAlarmActive(reading);
+
+                let dotClass = 'disconnected';
+
+                if (reading) {
+                  const hasStatusAlarm = isAlarmActive(reading);
+                  const hasGaugeAlarm = reading.insideTemperatureAlarm || reading.outsideTemperatureAlarm || reading.humidityAlarm ||
+                    reading.inputVoltageAlarm || reading.outputVoltageAlarm || reading.batteryBackupAlarm;
+
+                  if (hasStatusAlarm) {
+                    dotClass = 'status-alarm';
+                  } else if (hasGaugeAlarm) {
+                    dotClass = 'gauge-alarm';
+                  } else {
+                    dotClass = 'connected';
+                  }
+                }
+
+                const icon = L.divIcon({
+                  className: 'custom-marker',
+                  html: `<div class="marker-dot ${dotClass}"></div>`,
+                  iconSize: [20, 20],
+                  iconAnchor: [10, 10],
+                });
+
+
+                return (
+                  <Marker key={mac} position={[reading.latitude, reading.longitude]} icon={icon}
+                    eventHandlers={{ click: () => setSelectedMac(mac) }}>
+                    <Popup>{mac}</Popup>
+                  </Marker>
+                );
+              })}
+
         </MapContainer>
       </div>
     </div>
@@ -276,11 +366,7 @@ function Gauge({ label, value, max, color, alarm = false }) {
         value={value}
         maxValue={max}
         text={`${value}`}
-        styles={buildStyles({
-          pathColor: color,
-          textColor: '#fff',
-          trailColor: '#333'
-        })}
+        styles={buildStyles({ pathColor: color, textColor: '#fff', trailColor: '#333' })}
       />
       <div className="gauge-label">{label}</div>
     </div>
