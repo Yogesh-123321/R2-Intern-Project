@@ -1,4 +1,8 @@
 require('dotenv').config();
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const User = require('./models/User');
+const Device = require('./models/Device');
 const net = require('net');
 const mongoose = require('mongoose');
 const express = require('express');
@@ -12,10 +16,112 @@ app.use(bodyParser.json());
 const cors = require('cors');
 app.use(cors());
 
+// 🔌 DB connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err.message));
 
+// ✅ Login route (admin hardcoded via .env)
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  // Admin login
+  if (
+    username.toLowerCase() === process.env.ADMIN_USERNAME.toLowerCase() &&
+    password === process.env.ADMIN_PASSWORD
+  ) {
+    const token = jwt.sign(
+      { username: 'admin', role: 'admin' },
+      process.env.JWT_SECRET,
+      { expiresIn: '2h' }
+    );
+    return res.json({ role: 'admin', token });
+  }
+
+  // User login from DB
+  const user = await User.findOne({ username: username.toLowerCase() });
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+
+  const token = jwt.sign(
+    { username: user.username, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: '2h' }
+  );
+
+  res.json({ role: user.role, token }); // ✅ return role and token
+});
+
+
+// ✅ Register new user
+app.post('/api/register-user', async (req, res) => {
+  const { username, password, role } = req.body;
+
+  if (!['admin', 'block', 'gp', 'user'].includes(role)) {
+    return res.status(400).json({ error: 'Invalid role' });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10); // ✅ hash password
+    const user = new User({
+      username: username.toLowerCase(),
+      password: hashedPassword,
+      role
+    });
+    await user.save();
+    res.json({ message: 'User registered successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error creating user' });
+  }
+});
+
+
+// ✅ Register new device
+app.post('/api/register-device', async (req, res) => {
+  const { mac, block, panchayat, latitude, longitude, ipCamera } = req.body; // ⬅️ include ipCamera
+
+  try {
+    const device = new Device({
+      mac,
+      block,
+      panchayat,
+      latitude,
+      longitude,
+      ipCamera: ipCamera || '' // ⬅️ Optional
+    });
+    await device.save();
+    res.json({ message: 'Device registered successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error registering device' });
+  }
+});
+
+
+
+// ✅ Get registered device metadata
+app.get('/api/devices-info', async (req, res) => {
+  try {
+    const devices = await Device.find(); // includes ipCamera
+    res.json(devices);
+  } catch (err) {
+    res.status(500).json({ error: 'Error fetching devices' });
+  }
+});
+
+
+// ✅ Delete device by MAC
+app.delete('/api/device/:mac', async (req, res) => {
+  try {
+    await Device.deleteOne({ mac: req.params.mac });
+    res.json({ message: 'Device deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error deleting device' });
+  }
+});
+
+// ✅ Command endpoint
 app.post('/command', (req, res) => {
   const { mac, command } = req.body;
   const deviceSocket = connectedDevices.get(mac);
@@ -36,23 +142,26 @@ app.post('/command', (req, res) => {
   });
 });
 
+// ✅ Get connected MACs
 app.get('/api/devices', (req, res) => {
   res.json(Array.from(connectedDevices.keys()));
 });
 
+// ✅ Get only registered MACs
 app.get('/api/all-devices', async (req, res) => {
   try {
-    const devices = await SensorReading.distinct("mac");
-    res.json(devices);
+    const devices = await Device.find({}, 'mac');
+    res.json(devices.map(d => d.mac));
   } catch (error) {
-    console.error("Error fetching all devices:", error);
+    console.error("Error fetching registered devices:", error);
     res.status(500).json({ error: "Failed to fetch devices" });
   }
 });
 
+// ✅ Get last 100 readings
 app.get('/api/readings', async (req, res) => {
   try {
-    const readings = await SensorReading.find().sort({ timestamp: -1 }).limit(100);
+    const readings = await SensorReading.find().sort({ timestamp: -1 }).limit(400);
     res.json(readings);
   } catch (error) {
     console.error("Error fetching readings:", error);
@@ -60,6 +169,7 @@ app.get('/api/readings', async (req, res) => {
   }
 });
 
+// ✅ Get latest reading by MAC
 app.get('/api/device/:mac', async (req, res) => {
   try {
     const latest = await SensorReading.findOne({ mac: req.params.mac }).sort({ timestamp: -1 });
@@ -75,6 +185,7 @@ app.get('/api/thresholds', (req, res) => {
   res.json(thresholds);
 });
 
+// 📡 TCP Server
 const BULK_SAVE_LIMIT = 1000;
 let readingBuffer = [];
 
@@ -85,13 +196,13 @@ const server = net.createServer(socket => {
     buffer = Buffer.concat([buffer, data]);
 
     try {
-      while (buffer.length >= 63) {
+      while (buffer.length >= 55) {
         const macRaw = buffer.subarray(0, 17);
         const macRawStr = macRaw.toString('utf-8').slice(0, 17).trim();
         const mac = /^[0-9A-Fa-f:]+$/.test(macRawStr) ? macRawStr : `INVALID_${Date.now()}`;
         if (mac.startsWith("INVALID")) {
           console.warn(`⚠️ Dropping malformed MAC: ${mac}`);
-          buffer = buffer.slice(63);
+          buffer = buffer.slice(55);
           continue;
         }
 
@@ -111,18 +222,15 @@ const server = net.createServer(socket => {
         const fanLevel2Running = !!buffer[48];
         const fanLevel3Running = !!buffer[49];
         const fanFailBits = buffer.readUInt32LE(50);
-        const latitude = +buffer.readFloatLE(55).toFixed(6);  // ✅ New
-        const longitude = +buffer.readFloatLE(59).toFixed(6); // ✅ New
 
         const floats = [
           humidity, insideTemperature, outsideTemperature,
-          outputVoltage, inputVoltage, batteryBackup,
-          latitude, longitude
+          outputVoltage, inputVoltage, batteryBackup
         ];
 
         if (floats.some(val => isNaN(val) || Math.abs(val) > 100000)) {
           console.warn(`⚠️ Skipping packet from ${mac}: bad float value(s)`);
-          buffer = buffer.slice(63);
+          buffer = buffer.slice(55);
           continue;
         }
 
@@ -181,8 +289,6 @@ const server = net.createServer(socket => {
           fan4Status,
           fan5Status,
           fan6Status,
-          latitude,
-          longitude,
           ...thresholdAlarms
         });
 
@@ -195,7 +301,7 @@ const server = net.createServer(socket => {
           SensorReading.insertMany(toSave).catch(err => console.error('Bulk save error:', err.message));
         }
 
-        buffer = buffer.slice(63);
+        buffer = buffer.slice(55);
       }
     } catch (err) {
       console.error('Packet parsing failed:', err.message);

@@ -5,6 +5,7 @@ body {
   color: #fff;
 }
 
+/* Grid layout for dashboard */
 .dashboard {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -28,7 +29,7 @@ body {
   padding: 12px;
   border-radius: 16px;
   overflow: auto;
-  box-shadow: 0 0 10px rgba(0,0,0,0.6);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
 }
@@ -43,6 +44,7 @@ body {
   color: #ccc;
 }
 
+/* Scrollbar styling */
 .panel::-webkit-scrollbar {
   width: 6px;
 }
@@ -60,7 +62,6 @@ body {
   margin: 10px 0;
   gap: 8px;
 }
-
 .tabs button {
   flex: 1;
   padding: 6px;
@@ -71,177 +72,140 @@ body {
   cursor: pointer;
   font-weight: bold;
 }
-
 .tabs button.active {
   background-color: #1a73e8;
 }
 
-/* Gauges - 3x3 layout */
+/* Gauges */
 .gauges.grid-3x3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   justify-items: center;
 }
-
 .gauge-box.small {
   width: 90px;
   height: 90px;
-  border-radius: 50%;
-  background-color: transparent;
+  background: transparent;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 6px;
-  transition: box-shadow 0.2s ease-in-out;
 }
-
 .gauge-label {
   text-align: center;
   margin-top: 5px;
   font-size: 12px;
 }
-
 .gauge-box.alarm {
-  border: 4px solid red;
+   border: 4px solid red;
   box-shadow: 0 0 10px red;
   animation: blink 1s infinite;
+  border-radius: 80%;
 }
-
 @keyframes blink {
   0%, 100% { border-color: transparent; }
   50% { border-color: red; }
 }
 
-/* Fan Status */
-.fan-status {
-  margin-top: 12px;
-}
-
-.fan-status-line {
+/* Fan + Alarm Section */
+.fan-status-line, .alarm-line {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin: 10px 0;
 }
-
-.fan-light {
+.fan-light, .alarm-indicator {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-
-.fan-light-circle {
+.fan-light-circle, .alarm-led {
   width: 18px;
   height: 18px;
   background-color: #555;
   box-shadow: 0 0 6px #000;
-  margin-bottom: 4px;
-  transition: background-color 0.3s ease, box-shadow 0.3s ease;
 }
-
 .fan-light-circle.running {
   background-color: #00ff00;
   box-shadow: 0 0 8px #00ff00;
 }
-
 .fan-light-circle.stopped {
   background-color: #ff0000;
   box-shadow: 0 0 8px #ff0000;
 }
-
-.fan-label {
+.fan-label, .alarm-label {
   font-size: 0.8rem;
   color: #ccc;
+  margin-top: 2px;
 }
-
-/* Alarms */
-.alarm-line {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  width: 100%;
-  margin-top: 10px;
-  margin-bottom: 8px;
-}
-
-.alarm-indicator {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100px;
-  margin: 4px 0;
-  font-size: 0.8rem;
-}
-
-.alarm-led {
-  width: 18px;
-  height: 18px;
-  background-color: #808080;
-  box-shadow: 0 0 8px #808080;
-  margin-bottom: 2px;
-}
-
 .alarm-led.active {
-  background-color: #ff0000;
-  box-shadow: 0 0 12px #ff0000;
+  background-color: red;
+  box-shadow: 0 0 12px red;
   animation: blinkAlarm 1s infinite alternate;
 }
-
 @keyframes blinkAlarm {
-  0%   { box-shadow: 0 0 8px #ff0000; }
-  100% { box-shadow: 0 0 20px #ff0000; }
+  0%   { box-shadow: 0 0 8px red; }
+  100% { box-shadow: 0 0 20px red; }
 }
 
-.alarm-label {
-  color: #ccc;
-  text-align: center;
-}
-
-/* Command Panel */
-.command-panel input[type="text"],
-.command-panel input[type="password"] {
-  width: 100%;
-  padding: 6px;
-  margin-bottom: 10px;
-  border: none;
-  border-radius: 6px;
-  background-color: #222;
-  color: white;
-  font-size: 1rem;
-}
-
-.button-group {
+/* Power & Lock buttons */
+.fan-power-buttons.aligned {
   display: flex;
+  gap: 16px;
   flex-wrap: wrap;
-  gap: 8px;
   margin-top: 12px;
 }
-
-.button-group button {
-  flex: 1 1 auto;
-  padding: 6px;
-  background-color: #1a73e8;
+.power-btn {
+  width: 50px;
+  height: 50px;
+  background: #111;
   border: none;
-  border-radius: 8px;
-  color: white;
+  border-radius: 50%;
   cursor: pointer;
-  transition: background-color 0.2s;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
+}
+.power-btn.active {
+  background-color: black;
+  box-shadow: 0 0 20px limegreen;
+}
+.power-btn::before {
+  content: '\23FB';
+  font-size: 24px;
+  color: #444;
+}
+.power-btn.active::before {
+  color: #00ff00;
+}
+.lock-btn {
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  background: #222;
+  color: #fff;
+  border: 2px solid #444;
+  border-radius: 50%;
+  cursor: pointer;
 }
 
-.button-group button:hover {
-  background-color: #0f56c4;
+/* Snapshot placeholder */
+.snapshots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+.snapshots-grid img {
+  border-radius: 4px;
+  width: 100%;
 }
 
-/* Device Tiles */
+/* Devices */
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 10px;
 }
-
 .device-tile {
   padding: 10px;
   border-radius: 10px;
@@ -249,198 +213,135 @@ body {
   font-weight: bold;
   background-color: #222;
   cursor: pointer;
-  transition: all 0.2s;
 }
-
 .device-tile.connected {
   background-color: #2e7d32;
 }
-
 .device-tile.gauge-alarm {
   background-color: orange;
   color: #000;
 }
-
 .device-tile.status-alarm {
   background-color: yellow;
   color: #000;
 }
-
 .device-tile.disconnected {
   background-color: #ff4d4d;
   color: #fff;
   box-shadow: 0 0 8px #ff4d4d;
 }
-
-.device-tile:hover {
-  transform: scale(1.02);
-  box-shadow: 0 0 8px #fff;
-}
-
 .device-tile.selected {
   border: 2px solid #fff;
   box-shadow: 0 0 10px #fff;
 }
 
-/* Map Container */
-.device-map .leaflet-container {
-  height: 100%;
-  width: 100%;
-  border-radius: 12px;
-  z-index: 0;
-}
-
-/* Fan button controls */
-.panel .fan-status h4 {
-  margin: 6px 0 4px;
-  line-height: 1.2;
-}
-
-.panel .fan-status p {
-  margin: 2px 8px;
-  display: inline-block;
-}
-
-.fan-power-buttons {
-  display: flex;
-  gap: 20px;
-  margin-top: 16px;
-  justify-content: center;
-}
-
-.fan-power-buttons.aligned {
-  justify-content: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.power-btn {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background-color: #111;
-  border: none;
-  box-shadow: 0 0 8px rgba(0, 255, 0, 0.2);
-  cursor: pointer;
-  transition: all 0.3s ease-in-out;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.power-btn::before {
-  content: '\23FB';
-  font-size: 24px;
-  color: #444;
-  transition: color 0.3s ease;
-}
-
-.power-btn.active {
-  background-color: #000;
-  box-shadow: 0 0 20px #00ff00;
-}
-
-.power-btn.active::before {
-  color: #00ff00;
-}
-
-.lock-btn {
-  width: 40px;
-  height: 40px;
-  font-size: 22px;
-  background-color: #222;
-  color: #fff;
-  border: 2px solid #444;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.lock-btn:hover {
-  background-color: #333;
-}
-
-/* Map Markers */
+/* Map markers */
 .custom-marker {
   background: transparent;
   border: none;
 }
-
 .marker-dot {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background-color: red;
-}
-
-.marker-dot.connected {
-  background-color: limegreen;
-}
-
-.marker-dot.warning {
-  background-color: yellow;
-}
-
-.marker-dot.disconnected {
-  background-color: #ff4d4d;
-  box-shadow: 0 0 10px #ff4d4d;
-}
-
-/* Chart Legend */
-.custom-legend {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 3px;
-  margin-left: 100px;
-  font-size: 0.85rem;
-  color: #fff;
-  justify-items: start;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.legend-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background-color: #999;
-}
-
-.chart-wrapper {
-  margin-left: -10px;
-  padding-right: 10px;
-}
-
-/* Chart blinking dots */
-.blink-dot {
-  animation: blink-animation 1s infinite;
-  stroke-width: 1px;
-}
-
-@keyframes blink-animation {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-.marker-dot.disconnected {
-  background-color: red;
 }
 .marker-dot.connected {
   background-color: limegreen;
 }
-
-.marker-dot.gauge-alarm {
-  background-color: orange;
-}
-
 .marker-dot.status-alarm {
   background-color: yellow;
 }
-
+.marker-dot.gauge-alarm {
+  background-color: orange;
+}
 .marker-dot.disconnected {
   background-color: red;
+  box-shadow: 0 0 10px red;
+}
+
+/* Admin Dashboard */
+.admin-dashboard {
+  display: flex;
+  height: 100vh;
+}
+.sidebar {
+  width: 220px;
+  background-color: #111;
+  padding: 20px;
+}
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+}
+.sidebar li {
+  cursor: pointer;
+  padding: 10px;
+  border-bottom: 1px solid #333;
+}
+.sidebar li.active {
+  background-color: #333;
+  font-weight: bold;
+}
+.tab-content {
+  flex-grow: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  max-width: 400px;
+}
+.admin-form input,
+.admin-form select,
+.admin-form button {
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+/* Camera Feed Layout */
+.camera-feed-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: nowrap;
+  width: 100%;
+  gap: 20px;
+}
+.camera-frame {
+  aspect-ratio: 4 / 3; /* or match your stream */
+  width: 450px;
+  height: 210px;
+  border: 3px solid #444;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+.camera-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  transform-origin: center; /* 🟢 Shows entire feed, may have letterboxing */
+}
+
+.camera-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  flex-shrink: 0;
+}
+.camera-controls button {
+ padding: 8px 12px;
+  background-color: #1a73e8;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.camera-controls button:hover {
+  background-color: #444;
 }

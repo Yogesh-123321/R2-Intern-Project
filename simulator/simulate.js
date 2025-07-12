@@ -1,6 +1,6 @@
 const net = require('net');
 
-const TOTAL_DEVICES = 10;
+const TOTAL_DEVICES = 11;
 const devices = [];
 
 function generateMac(index) {
@@ -23,7 +23,7 @@ function startDevice(mac, index) {
   let alarmDuration = 2 + Math.floor(Math.random() * 2);
   let inAlarmPhase = false;
 
-  const client = net.createConnection({ host: '13.201.227.67', port: 4000 });
+  const client = net.createConnection({ host: 'localhost', port: 4000 });
 
   client.on('connect', () => {
     console.log(`✅ Connected as ${mac}`);
@@ -37,7 +37,7 @@ function startDevice(mac, index) {
         clearInterval(interval);
         client.end();
 
-        const reconnectDelay = 10000 + Math.random() * 10000; // 10–20 seconds
+        const reconnectDelay = 10000 + Math.random() * 10000;
         console.log(`🔄 [${mac}] Will reconnect in ${(reconnectDelay / 1000).toFixed(1)}s`);
 
         setTimeout(() => {
@@ -47,7 +47,7 @@ function startDevice(mac, index) {
         return;
       }
 
-      // Toggle alarm phase for healthy devices
+      // Toggle alarm phase
       if (isHealthyDevice) {
         if (sendCount >= alarmStart && sendCount < alarmStart + alarmDuration) {
           inAlarmPhase = true;
@@ -91,11 +91,6 @@ function startDevice(mac, index) {
       const failBuf = Buffer.alloc(4);
       failBuf.writeUInt32LE(failMask, 0);
 
-      const latitude = +(28.4 + Math.random() * 0.5).toFixed(6);
-      const longitude = +(76.9 + Math.random() * 0.6).toFixed(6);
-      const latBuf = toFloatLE(latitude);
-      const lonBuf = toFloatLE(longitude);
-
       const packet = Buffer.concat([
         Buffer.from(mac.padEnd(17, ' '), 'utf-8'),
         toFloatLE(humidity),
@@ -111,11 +106,9 @@ function startDevice(mac, index) {
           fan1,
           fan2,
           fan3,
-          0
+          0 // padding/reserved
         ]),
-        failBuf,
-        latBuf,
-        lonBuf
+        failBuf
       ]);
 
       const status = isDisconnectedSim && sendCount >= 3

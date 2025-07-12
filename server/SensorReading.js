@@ -27,9 +27,6 @@ const sensorReadingSchema = new mongoose.Schema({
   fan5Status: { type: Boolean, required: true },
   fan6Status: { type: Boolean, required: true },
 
-  latitude: { type: Number, required: true },
-  longitude: { type: Number, required: true },
-
   // ✅ Threshold-based alarms (with required flag)
   insideTemperatureAlarm: { type: Boolean, required: true },
   outsideTemperatureAlarm: { type: Boolean, required: true },
