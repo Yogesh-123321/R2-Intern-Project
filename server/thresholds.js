@@ -12,8 +12,8 @@ module.exports = {
     max: 80   // You can adjust as per your sensor/environment
   },
   inputVoltage: {
-    min: 3.0,
-    max: 5.0
+    min: 30.0,
+    max: 50.0
   },
   outputVoltage: {
     min: 3.0,

@@ -21,12 +21,19 @@ function DashboardView() {
   const [activeFanBtns, setActiveFanBtns] = useState([]);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
-  const mapRef = useRef();
+
+//Map and marker refs
+  const mapRef = useRef(null);
+  const markerRefs = useRef({});
 
   const latestReadingsByMac = {};
   readings.forEach(r => {
-    if (!latestReadingsByMac[r.mac]) latestReadingsByMac[r.mac] = r;
+    const existing = latestReadingsByMac[r.mac];
+    if (!existing || new Date(r.timestamp) > new Date(existing.timestamp)) {
+      latestReadingsByMac[r.mac] = r;
+    }
   });
+
 
   const selectedDeviceMeta = deviceMeta.find(d => d.mac === selectedMac);
   const latestReading = readings.find(r => r.mac === selectedMac);
@@ -57,6 +64,7 @@ function DashboardView() {
     }
   }, [zoom, rotation]);
 
+  
   const fetchData = async () => {
     try {
       const [readingsRes, devicesRes, deviceMetaRes] = await Promise.all([
@@ -64,11 +72,17 @@ function DashboardView() {
         fetch('http://localhost:5000/api/all-devices'),
         fetch('http://localhost:5000/api/devices-info')
       ]);
-      const [readingsData, devicesData, metadata] = await Promise.all([
-        readingsRes.json(),
-        devicesRes.json(),
-        deviceMetaRes.json()
-      ]);
+
+      // Fallback to [] if any response fails
+      let readingsData = [], devicesData = [], metadata = [];
+
+      if (readingsRes.ok) readingsData = await readingsRes.json();
+      if (devicesRes.ok) devicesData = await devicesRes.json();
+      if (deviceMetaRes.ok) metadata = await deviceMetaRes.json();
+
+      setReadings(Array.isArray(readingsData) ? readingsData : []);
+      setDevices(Array.isArray(devicesData) ? devicesData : []);
+      setDeviceMeta(Array.isArray(metadata) ? metadata : []);
       setReadings(readingsData);
       setDevices(devicesData);
       setDeviceMeta(metadata);
@@ -76,6 +90,13 @@ function DashboardView() {
       console.error('Error fetching data:', err);
     }
   };
+
+ const handleMapCreated = (mapInstance) => {
+  if (!mapRef.current) {
+    mapRef.current = mapInstance;
+    console.log('Map ref set:', mapRef.current); // <--- You should see this log ONCE
+  }
+};
 
   const sendCommand = async (cmdToSend) => {
     if (!selectedMac || !cmdToSend) {
@@ -97,10 +118,18 @@ function DashboardView() {
   };
 
   const handleFanClick = (level) => {
-    const isActive = activeFanBtns.includes(level);
-    setActiveFanBtns(isActive ? activeFanBtns.filter(l => l !== level) : [...activeFanBtns, level]);
-    sendCommand(`fan level ${level}`);
-  };
+  const isActive = activeFanBtns.includes(level);
+  const command = isActive ? `fan off level ${level}` : `fan on level ${level}`;
+  
+  sendCommand(command);
+
+  // Update UI immediately (optional, for instant feedback)
+  setActiveFanBtns(isActive 
+    ? activeFanBtns.filter(l => l !== level) 
+    : [...activeFanBtns, level]
+  );
+};
+
 
   const handleOpenLock = () => {
     const pwd = window.prompt("Enter password to open lock:");
@@ -137,22 +166,46 @@ function DashboardView() {
     reading.fireAlarm || reading.waterLeakage || reading.waterLogging;
 
   const historicalData = readings
-    .filter(r => r.mac === selectedMac)
+    .filter(r => r.mac === selectedMac && r.timestamp)
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)) // oldest to latest
     .slice(-15)
     .map(r => ({
-      time: new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      insideTemperature: r.insideTemperature,
-      outsideTemperature: r.outsideTemperature,
-      humidity: r.humidity,
-      inputVoltage: r.inputVoltage,
-      outputVoltage: r.outputVoltage,
-      batteryBackup: r.batteryBackup
+      time: new Date(r.timestamp).toLocaleTimeString([], { month: '2-digit',
+  day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',hour12: false }),
+       insideTemperature: Number(r.insideTemperature.toFixed(2)),
+outsideTemperature: Number(r.outsideTemperature.toFixed(2)),
+humidity: Number(r.humidity.toFixed(2)),
+inputVoltage: Number(r.inputVoltage.toFixed(2)),
+outputVoltage: Number(r.outputVoltage.toFixed(2)),
+batteryBackup: Number(r.batteryBackup.toFixed(2)),
+
+      // insideTemperature: r.insideTemperature,
+      // outsideTemperature: r.outsideTemperature,
+      // humidity: r.humidity,
+      // inputVoltage: r.inputVoltage,
+      // outputVoltage: r.outputVoltage,
+      // batteryBackup: r.batteryBackup
+
     }));
 
+
   return (
+    <>
+    {/* Logo */}
+      <div style={{
+        position: 'absolute',
+        top: 20,
+        right: 20,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        zIndex: 9999
+      }}>
+        <img src="/technotrendz.png" alt="Technotrendz Logo" style={{ height: '40px', width: '100px' }} />
+      </div>
     <div className="dashboard">
       <div className="panel">
-        <h2 className="selected-heading">📟 Selected Device {selectedMac && <span>: {selectedMac}</span>}</h2>
+        <h2 className="selected-heading">📟 Selected iMoni {selectedMac && <span>: {selectedMac}</span>}</h2>
         {latestReading && (
           <>
             <div className="tabs">
@@ -176,14 +229,25 @@ function DashboardView() {
             {activeTab === 'status' && (
               <div className="fan-status">
                 <div className="fan-status-line">
-                  <h4>Fan Running Status</h4>
-                  {[...Array(6)].map((_, i) => (
-                    <div key={i} className="fan-light">
-                      <div className={`fan-light-circle ${latestReading[`fan${i + 1}Status`] ? 'running' : 'stopped'}`} />
-                      <div className="fan-label">F{i + 1}</div>
-                    </div>
-                  ))}
-                </div>
+                    <h4>Fan Running Status</h4>
+                    {[...Array(6)].map((_, i) => {
+                      const running = latestReading[`fan${i + 1}Status`];      // true if running
+                      const faulty = latestReading[`fan${i + 1}Fault`];        // true if faulty
+
+                      let statusClass = 'off'; // default grey
+                      if (running && !faulty) statusClass = 'running'; // green
+                      else if (running && faulty) statusClass = 'faulty'; // red
+                      else if (!running && faulty) statusClass = 'faulty'; // red even if off
+
+                      return (
+                        <div key={i} className="fan-light">
+                          <div className={`fan-light-circle ${statusClass}`} />
+                          <div className="fan-label">F{i + 1}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
                 <div className="alarm-line">
                   <h4>Alarms</h4>
                   {['fireAlarm', 'waterLogging', 'waterLeakage'].map((key, i) => (
@@ -201,12 +265,12 @@ function DashboardView() {
                 </div>
                 <h4>🛠 Commands</h4>
                 <div className="fan-power-buttons aligned">
-                  {[1, 2, 3].map(level => (
-                    <div key={level} className="fan-light">
-                      <button className={`power-btn ${activeFanBtns.includes(level) ? 'active' : ''}`} onClick={() => handleFanClick(level)} />
-                      <div className="fan-label">Level {level}</div>
-                    </div>
-                  ))}
+                    {[1, 2, 3, 4].map(level => (
+                      <div key={level} className="fan-light">
+                        <button className={`power-btn ${activeFanBtns.includes(level) ? 'active' : ''}`} onClick={() => handleFanClick(level)} />
+                        <div className="fan-label">Level {level}</div>
+                      </div>
+                    ))}
                   <div className="fan-light">
                     <button className="lock-btn" onClick={handleOpenLock}>🔓</button>
                     <div className="fan-label">Lock</div>
@@ -260,7 +324,13 @@ function DashboardView() {
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={historicalData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" interval={0} angle={-45} textAnchor="end" height={60} tick={{ fontSize: 10, fill: '#ccc' }} />
+              <XAxis
+                  dataKey="time"
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                  tick={{ fontSize: 10, fill: '#ccc' }}
+                />
               <YAxis />
               <Tooltip />
               <Legend />
@@ -278,99 +348,159 @@ function DashboardView() {
       </div>
 
       {/* Panel 3: Device Tiles */}
-      <div className="panel device-list">
-        <h2>🟢 Devices</h2>
-        <div className="grid">
-          {deviceMeta.map(device => {
-            const mac = device.mac;
-            const reading = readings.find(r => r.mac === mac);
-            let colorClass = 'disconnected';
+  <div className="panel device-list">
+  <h2>🟢 Devices</h2>
+  <div className="grid">
+    {(() => {
+      const latestReadingsByMac = {};
+      readings.forEach(r => {
+        const existing = latestReadingsByMac[r.mac];
+        if (!existing || new Date(r.timestamp) > new Date(existing.timestamp)) {
+          latestReadingsByMac[r.mac] = r;
+        }
+      });
 
-            if (reading && Date.now() - new Date(reading.timestamp).getTime() < 10000) {
-              const hasStatusAlarm = isAlarmActive(reading);
-              const hasGaugeAlarm =
-                reading.insideTemperatureAlarm || reading.outsideTemperatureAlarm ||
-                reading.humidityAlarm || reading.inputVoltageAlarm ||
-                reading.outputVoltageAlarm || reading.batteryBackupAlarm;
+      return deviceMeta.map(device => {
+        const mac = device.mac;
+        const reading = latestReadingsByMac[mac];
+        let colorClass = 'disconnected'; // default
 
-              colorClass = hasStatusAlarm ? 'status-alarm'
-                : hasGaugeAlarm ? 'gauge-alarm' : 'connected';
-            }
+        if (reading && reading.timestamp) {
+          const age = Date.now() - new Date(reading.timestamp).getTime();
+          const staleThreshold = 30000; // 30 seconds
 
-            return (
-              <div
-                key={mac}
-                className={`device-tile ${colorClass} ${selectedMac === mac ? 'selected' : ''}`}
-                onClick={() => {
-                  setSelectedMac(mac);
-                  const device = deviceMeta.find(d => d.mac === mac);
-                  const lat = parseFloat(device?.latitude);
-                  const lon = parseFloat(device?.longitude);
-                  if (mapRef.current && !isNaN(lat) && !isNaN(lon)) {
-                    mapRef.current.flyTo([lat, lon], 15, { duration: 1.5 });
-                  }
-                }}
-              >
-                {mac}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {/* Panel 4: Map */}
-      <div className="panel device-map">
-        <h2>🗺️ Device Map</h2>
-        <MapContainer
-  center={defaultLocation}
-  zoom={11}
-  scrollWheelZoom={true}
-  style={{ height: '100%', width: '100%' }}
-  whenCreated={(mapInstance) => {
-    mapRef.current = mapInstance;
-  }}
->
-
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          {deviceMeta.map(device => {
-            const mac = device.mac;
-            const reading = latestReadingsByMac[mac];
-            if (!reading) return null;
-
+          if (age <= staleThreshold) {
+            // Use status from latest valid reading
             const hasStatusAlarm = isAlarmActive(reading);
             const hasGaugeAlarm =
               reading.insideTemperatureAlarm || reading.outsideTemperatureAlarm ||
               reading.humidityAlarm || reading.inputVoltageAlarm ||
               reading.outputVoltageAlarm || reading.batteryBackupAlarm;
 
-            let dotClass = 'disconnected';
-            if (hasStatusAlarm) dotClass = 'status-alarm';
-            else if (hasGaugeAlarm) dotClass = 'gauge-alarm';
-            else dotClass = 'connected';
+            colorClass =
+              hasStatusAlarm ? 'status-alarm'
+              : hasGaugeAlarm ? 'gauge-alarm'
+              : 'connected';
+          } else {
+            // Reading is stale — treat as disconnected
+            colorClass = 'disconnected';
+          }
+        }
 
-            const icon = L.divIcon({
-              className: 'custom-marker',
-              html: `<div class="marker-dot ${dotClass}"></div>`,
-              iconSize: [20, 20],
-              iconAnchor: [10, 10],
-            });
+        return (
+          <div
+            key={mac}
+            className={`device-tile ${colorClass} ${selectedMac === mac ? 'selected' : ''}`}
+            onClick={() => setSelectedMac(mac)}
+          >
+            {device.locationId || mac}
+          </div>
+        );
+      });
+    })()}
+  </div>
+</div>
+     
+      {/* Panel 4: Map */}
+     <div className="panel device-map">
+  <h2>🗺️ Device Map</h2>
 
-            const lat = parseFloat(device.latitude);
-            const lon = parseFloat(device.longitude);
+  {(() => {
+    const selectedDevice = deviceMeta.find(d => d.mac === selectedMac);
+    const lat = parseFloat(selectedDevice?.latitude);
+    const lon = parseFloat(selectedDevice?.longitude);
+    const selectedCenter = (!isNaN(lat) && !isNaN(lon)) ? [lat, lon] : defaultLocation;
 
-            return (
-              <Marker
-                key={mac}
-                position={[lat, lon]}
-                icon={icon}
-                eventHandlers={{ click: () => setSelectedMac(mac) }}
-              >
-                <Popup>{mac}<br />{device.block}, {device.panchayat}</Popup>
-              </Marker>
-            );
-          })}
-        </MapContainer>
+    return (
+      <MapContainer
+        key={selectedMac || 'default-map'}
+        center={selectedCenter}
+        zoom={15}
+        scrollWheelZoom={true}
+        style={{ height: '315px', width: '100%' }}
+        whenCreated={handleMapCreated}
+      >
+        <TileLayer
+          url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>'
+        />
+
+        {deviceMeta.map(device => {
+          const mac = device.mac;
+          const reading = latestReadingsByMac[mac];
+
+          let dotClass = 'disconnected'; // Default state
+
+          if (reading) {
+            const timeDiff = Date.now() - new Date(reading.timestamp).getTime();
+            const isStale = timeDiff > 30000;
+
+            if (!isStale) {
+              const hasStatusAlarm = isAlarmActive(reading);
+              const hasGaugeAlarm =
+                reading.insideTemperatureAlarm ||
+                reading.outsideTemperatureAlarm ||
+                reading.humidityAlarm ||
+                reading.inputVoltageAlarm ||
+                reading.outputVoltageAlarm ||
+                reading.batteryBackupAlarm;
+
+              dotClass = hasStatusAlarm
+                ? 'status-alarm'
+                : hasGaugeAlarm
+                ? 'gauge-alarm'
+                : 'connected';
+            }
+          }
+
+          const icon = L.divIcon({
+            className: 'custom-marker',
+            html: `<div class="marker-dot ${dotClass}"></div>`,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+          });
+
+          const lat = parseFloat(device.latitude);
+          const lon = parseFloat(device.longitude);
+          if (isNaN(lat) || isNaN(lon)) return null;
+
+          return (
+            <Marker
+              key={mac}
+              position={[lat, lon]}
+              icon={icon}
+              ref={ref => {
+                markerRefs.current[mac] = ref;
+              }}
+              eventHandlers={{
+                click: () => setSelectedMac(mac),
+              }}
+            >
+              <Popup>
+                {device.locationId || mac}
+                <br />
+                {device.address || ''}
+              </Popup>
+            </Marker>
+          );
+        })}
+      </MapContainer>
+    );
+  })()}
+
+  <div style={{
+    marginTop: '8px',
+    fontSize: '0.8rem',
+    color: '#aaa',
+    textAlign: 'right'
+  }}>
+    Best viewed on {navigator.userAgent.includes("Chrome") ? "Chrome" :
+      navigator.userAgent.includes("Firefox") ? "Firefox" : "your browser"} @ {window.innerWidth}x{window.innerHeight}
+  </div>
+</div>
+
       </div>
-    </div>
+    </>
   );
 }
 
