@@ -231,13 +231,14 @@ batteryBackup: Number(r.batteryBackup.toFixed(2)),
                 <div className="fan-status-line">
                     <h4>Fan Running Status</h4>
                     {[...Array(6)].map((_, i) => {
-                      const running = latestReading[`fan${i + 1}Status`];      // true if running
-                      const faulty = latestReading[`fan${i + 1}Fault`];        // true if faulty
+                      const statusVal = latestReading[`fan${i + 1}Status`]; // 0=off, 1=healthy, 2=faulty
+                      let statusClass = 'off';
+                      if (statusVal === 1) {
+                        statusClass = 'running';  // green
+                      } else if (statusVal === 2) {
+                        statusClass = 'faulty';   // red
+                      }
 
-                      let statusClass = 'off'; // default grey
-                      if (running && !faulty) statusClass = 'running'; // green
-                      else if (running && faulty) statusClass = 'faulty'; // red
-                      else if (!running && faulty) statusClass = 'faulty'; // red even if off
 
                       return (
                         <div key={i} className="fan-light">
