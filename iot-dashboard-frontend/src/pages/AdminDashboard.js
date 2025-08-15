@@ -55,7 +55,7 @@ const RegisterUserTab = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/users');
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/api/users`);
       const data = await res.json();
       setUsers(data);
     } catch (err) {
@@ -74,7 +74,7 @@ const RegisterUserTab = () => {
     }
 
     try {
-      const res = await fetch('http://localhost:5000/api/register-user', {
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/api/register-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -97,7 +97,7 @@ const RegisterUserTab = () => {
   const handleEdit = (user, newUsername, newPassword) => {
     requestPassword(async (adminPassword) => {
       try {
-        const res = await fetch(`http://localhost:5000/api/user/${user._id}`, {
+        const res = await fetch(`${process.env.REACT_APP_API_URL}/api/user/${user._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: newUsername, password: newPassword, adminPassword }),
@@ -119,7 +119,7 @@ const RegisterUserTab = () => {
     }
     requestPassword(async (adminPassword) => {
       try {
-        const res = await fetch(`http://localhost:5000/api/user/${user._id}`, {
+        const res = await fetch(`${process.env.REACT_APP_API_URL}/api/user/${user._id}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ adminPassword }),
@@ -258,7 +258,7 @@ const RegisterDeviceTab = () => {
 
   const fetchDevices = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/devices-info');
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/api/devices-info`);
       const data = await res.json();
       setDeviceList(data);
     } catch (err) {
@@ -290,7 +290,7 @@ const RegisterDeviceTab = () => {
   }
 
   try {
-    const res = await fetch('http://localhost:5000/api/register-device', {
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/register-device`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -455,7 +455,7 @@ const EditableRow = ({ device, onUpdated }) => {
     if (!password) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/device/${device.mac}`, {
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/api/device/${device.mac}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, password }),
@@ -479,7 +479,7 @@ const EditableRow = ({ device, onUpdated }) => {
     if (!password) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/device/delete/${device.mac}`, {
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/api/device/delete/${device.mac}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
@@ -597,7 +597,7 @@ const HistoricalDataTab = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/devices-info')
+    fetch(`${process.env.REACT_APP_API_URL}/api/devices-info`)
       .then(res => res.json())
       .then(setDevices)
       .catch(err => console.error('Error fetching devices:', err));
@@ -640,7 +640,7 @@ const HistoricalDataTab = () => {
     setLoading(true);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/historical-data?mac=${selectedMac}&datetime=${encodeURIComponent(datetime)}`);
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/api/historical-data?mac=${selectedMac}&datetime=${encodeURIComponent(datetime)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch historical data');
 

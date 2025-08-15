@@ -12,7 +12,7 @@ function App() {
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        const res = await fetch('http://localhost:5000/ping', { method: 'GET' });
+        const res = await fetch(`${process.env.REACT_APP_API_URL}/ping`, { method: 'GET' });
         if (!res.ok) throw new Error('Offline');
         setOfflinePrompt(false);
       } catch (err) {

@@ -68,9 +68,9 @@ function DashboardView() {
   const fetchData = async () => {
     try {
       const [readingsRes, devicesRes, deviceMetaRes] = await Promise.all([
-        fetch('http://localhost:5000/api/readings'),
-        fetch('http://localhost:5000/api/all-devices'),
-        fetch('http://localhost:5000/api/devices-info')
+        fetch(`${process.env.REACT_APP_API_URL}/api/readings`),
+        fetch(`${process.env.REACT_APP_API_URL}/api/all-devices`),
+        fetch(`${process.env.REACT_APP_API_URL}/api/devices-info`)
       ]);
 
       // Fallback to [] if any response fails
@@ -104,7 +104,7 @@ function DashboardView() {
       return;
     }
     try {
-      const res = await fetch('http://localhost:5000/command', {
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mac: selectedMac, command: cmdToSend }),
